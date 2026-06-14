@@ -35,7 +35,7 @@ The system adapts music recommendations from Spotify based on users’ emotions,
 1. Clone the repository:
 
    ```
-   git clone https://github.com/urvashii-b/Emotify-Arithemania.git
+   git clone https://github.com/devasya0505/emotify_music-recommendation-with-facial-recognition.git
    ```
 
 2. Navigate to the respective folders for frontend and backend setups.
