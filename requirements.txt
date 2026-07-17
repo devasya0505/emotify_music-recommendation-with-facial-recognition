@@ -1,7 +1,7 @@
 flask
 numpy
 pandas
-opencv-python
+opencv-python<5
 python-dotenv
 spotipy
 tensorflow

@@ -27,7 +27,7 @@
 Open a **PowerShell terminal** and run these 3 commands:
 
 ```powershell
-cd "e:\1_B.E. in IT\DE-Project\de-project\Emotify-Arithemania"
+cd "e:\1_B.E. in IT\DE-Project\de-project\Emotify"
 ```
 ```powershell
 .\venv\Scripts\activate
@@ -52,7 +52,7 @@ You should see:
 Open a **second PowerShell terminal** and run:
 
 ```powershell
-cd "e:\1_B.E. in IT\DE-Project\de-project\Emotify-Arithemania\frontend"
+cd "e:\1_B.E. in IT\DE-Project\de-project\Emotify\frontend"
 ```
 ```powershell
 npm start
