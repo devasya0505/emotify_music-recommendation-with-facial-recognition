@@ -1,53 +1,69 @@
-# Emotify
+# 🎵 Emotify
 
-Emotify is a facial emotion-based music recommender.  
-It detects a user’s emotion from webcam input and recommends mood-matched songs (Bollywood + Hollywood) using a local dataset, with optional Spotify playlist integration.
+Emotify is a facial emotion-based music recommender. It detects a user’s emotion from webcam input and recommends mood-matched songs (Bollywood + Hollywood) using a local dataset, with optional Spotify playlist integration.
 
-## Supported emotions
+---
 
-- Angry
-- Disgust
-- Fear
-- Happy
-- Neutral
-- Sad
-- Surprise
+## Supported Emotions
 
-These are mapped to recommendation moods (`Energetic`, `Happy`, `Sad`, `Calm`) in the recommender.
+Webcam input detects the following facial emotions:
+- **Angry** (maps to *Energetic* recommendation mood)
+- **Disgust** (maps to *Sad* recommendation mood)
+- **Fear** (maps to *Calm* recommendation mood)
+- **Happy** (maps to *Happy* recommendation mood)
+- **Neutral** (maps to *Calm* recommendation mood)
+- **Sad** (maps to *Sad* recommendation mood)
+- **Surprise** (maps to *Energetic* recommendation mood)
 
-## Tech stack
+---
 
-- **Frontend:** React (`frontend/`)
-- **Backend:** Flask + OpenCV + TensorFlow (`emotionDetection/main.py`)
-- **Recommender:** Pandas + Spotipy (`songRecommender/recommender.py`)
+## Technology Stack
 
-## Project structure
+- **Frontend:** React (Vite/CRA) styled with custom responsive CSS.
+- **Backend:** Flask + OpenCV + TensorFlow (loads pre-trained CNN model).
+- **Recommender:** Pandas + Spotipy (Spotify Web API wrapper).
 
-- `frontend/` - React app with the “Try Emotify” entry point
-- `emotionDetection/` - Flask server and webcam-based emotion detection
-- `songRecommender/` - Mood mapping and song/playlist recommendation logic
-- `requirements.txt` - Python dependencies
-- `.env.example` - Optional Spotify environment variables template
-- `new.txt` - Temporary mood/result file used by recommender flow
-- `new.html` - Generated recommendation page (legacy/local flow)
+---
+
+## Project Structure
+
+```
+Emotify/
+├── emotionDetection/       # Flask backend and webcam emotion detection models
+│   ├── main.py             # Main Flask server
+│   ├── model.h5            # Pre-trained CNN model
+│   └── haarcascade_...xml  # OpenCV Face cascade classifier
+├── songRecommender/        # Mood mapping and song recommendations database
+│   ├── recommender.py      # Core Spotify and CSV recommending logic
+│   ├── helpers.py          # Spotify API credentials wrapper
+│   └── data/
+│       └── data_moods.csv  # Combined Hollywood & Bollywood tracks dataset
+├── frontend/               # Fully responsive React application
+│   ├── src/                # React source files (App.js, About.js)
+│   └── package.json        # Frontend npm configuration
+├── requirements.txt        # Python backend dependencies
+└── .env.example            # Template for optional Spotify integration credentials
+```
+
+---
 
 ## Prerequisites
 
-- Python 3.10+ recommended
-- Node.js 18+ and npm
+- **Python 3.10+**
+- **Node.js 18+** and `npm`
 - Webcam access enabled
 
-## Setup
+---
 
-### 1) Clone the repository
+## Setup Instructions
 
+### 1) Clone the Repository
 ```bash
 git clone https://github.com/devasya0505/emotify_music-recommendation-with-facial-recognition.git
 cd emotify_music-recommendation-with-facial-recognition
 ```
 
-### 2) Install Python dependencies
-
+### 2) Install Python Dependencies
 ```bash
 python -m venv venv
 venv\Scripts\activate
@@ -55,67 +71,59 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-### 3) Install frontend dependencies
-
+### 3) Install Frontend Dependencies
 ```bash
 cd frontend
 npm install
 cd ..
 ```
 
-## Optional Spotify setup
+---
 
-Spotify integration is optional. The app can still show track recommendations without creating a playlist.
+## Optional Spotify Setup
 
-1. Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
-2. Add a redirect URI (recommended): `http://127.0.0.1:8888/callback`
-3. Create a `.env` file in the project root using `.env.example`:
-
+Spotify integration allows creating custom public playlists automatically on your Spotify account.
+1. Create a developer app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
+2. Set the redirect URI to: `http://127.0.0.1:8888/callback`
+3. Create a `.env` file in the project root folder based on `.env.example`:
 ```env
 SPOTIPY_CLIENT_ID=your_client_id
 SPOTIPY_CLIENT_SECRET=your_client_secret
 SPOTIPY_REDIRECT_URI=http://127.0.0.1:8888/callback
 ```
 
-## Run the project
+---
 
-### 1) Start backend (Terminal 1)
+## How to Run the Project
 
+### 1) Start the Flask Backend (Terminal 1)
 ```bash
 venv\Scripts\activate
 python emotionDetection\main.py
 ```
+*The backend runs at `http://127.0.0.1:5000`*
 
-Backend runs at: `http://127.0.0.1:5000`
-
-### 2) Start frontend (Terminal 2)
-
+### 2) Start the React Frontend (Terminal 2)
 ```bash
 cd frontend
 npm start
 ```
+*The frontend runs at `http://localhost:3000`*
 
-Frontend runs at: `http://localhost:3000`
+### 3) Use the App
+1. Open `http://localhost:3000` in your web browser.
+2. Click **Try Emotify** to open the emotion detection page.
+3. Click **Start Emotion Detection**. The webcam window will pop up.
+4. Keep your face centered in front of the camera (wait for ~50 frames or press `q` to stop detection early).
+5. The page will display the detected emotion, and list recommended Bollywood and Hollywood songs with Spotify embed players.
 
-### 3) Use the app
+---
 
-1. Open `http://localhost:3000`
-2. Click **Try Emotify**
-3. In the backend page, click **Start Emotion Detection**
-4. Webcam opens; press **q** to stop early
-5. View detected emotion and recommended tracks
+## Backend APIs
 
-## Backend endpoints
-
-- `GET /` - Backend UI
-- `GET /health` - Health check
-- `GET|POST /detect` - Runs emotion detection and returns recommendations
-  - Optional query params:
-    - `seconds` (default: `5`)
-    - `camera` (default: `0`)
-
-## Notes
-
-- If webcam access fails, close apps using the camera (Teams/Zoom/etc.) and retry.
-- If no face is detected, improve lighting and keep your face centered.
-- If ports are busy, stop conflicting processes or change ports in source.
+- `GET /` — Backend homepage.
+- `GET /health` — Simple backend health check.
+- `GET|POST /detect` — Executes emotion detection via webcam, maps detected emotion to mood, and queries local CSV for song recommendations.
+  - Optional Query Parameters:
+    - `seconds` (default: `5`) — Detection duration.
+    - `camera` (default: `0`) — Camera source index.

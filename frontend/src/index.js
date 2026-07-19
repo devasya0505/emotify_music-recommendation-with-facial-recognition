@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import Garlic from "./App.js";
-import About from "./About.js";
+import Garlic from "./App";
+import About from "./About";
 
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 

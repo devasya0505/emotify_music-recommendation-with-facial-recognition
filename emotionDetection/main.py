@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from songRecommender.recommender import build_recommendation, normalize_mood, write_mood_file
+from songRecommender.recommender import build_recommendation, normalize_mood
 
 try:
     from dotenv import load_dotenv
@@ -315,6 +315,9 @@ def detect_emotion(duration_seconds=5, camera_index=0):
             if not ok or frame is None:
                 continue
 
+            # Mirror the frame horizontally
+            frame = cv2.flip(frame, 1)
+
             # Show countdown timer on screen
             elapsed = _time.time() - start_time
             remaining = max(0, duration_seconds - elapsed)
@@ -372,7 +375,6 @@ def detect():
         camera_index = int(request.args.get("camera", 0))
         emotion, counts = detect_emotion(duration_seconds=duration, camera_index=camera_index)
         mood = normalize_mood(emotion)
-        write_mood_file(mood)
         recommendation = build_recommendation(mood=mood, limit=10, create_playlist=False)
     except Exception as exc:
         return render_template_string(ERROR_PAGE, message=str(exc)), 500

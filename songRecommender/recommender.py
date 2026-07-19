@@ -15,12 +15,7 @@ import pandas as pd
 # Path helpers
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent
-
 DATA_MOODS_CSV = SCRIPT_DIR / "data" / "data_moods.csv"
-NEW_TXT_PATH = PROJECT_ROOT / "new.txt"
-NEW_HTML_PATH = PROJECT_ROOT / "new.html"
-BG_IMAGE_PATH = SCRIPT_DIR / "data" / "bg.jpg"
 
 # Spotify credentials — read from env-vars first, fall back to defaults.
 SPOTIFY_CLIENT_ID = os.environ.get(
@@ -53,18 +48,6 @@ def normalize_mood(emotion: str) -> str:
     return EMOTION_TO_MOOD.get(emotion, emotion)
 
 
-# ---------------------------------------------------------------------------
-# File I/O
-# ---------------------------------------------------------------------------
-
-def read_mood_file() -> str:
-    """Read the current mood string from *new.txt*."""
-    return NEW_TXT_PATH.read_text(encoding="utf-8").strip()
-
-
-def write_mood_file(content: str) -> None:
-    """Write *content* (mood or playlist id) to *new.txt*."""
-    NEW_TXT_PATH.write_text(content, encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -186,66 +169,3 @@ def build_recommendation(
 
     return result
 
-
-# ---------------------------------------------------------------------------
-# HTML generation (used by test.py / test2.py flow)
-# ---------------------------------------------------------------------------
-
-def write_recommendation_html(recommendation: dict) -> str:
-    """Write an HTML file that embeds a Spotify playlist (if available)
-    or lists song links.  Returns the absolute path of the HTML file."""
-
-    playlist = recommendation.get("playlist")
-    songs = recommendation.get("songs", [])
-    mood = recommendation.get("mood", "")
-
-    if playlist:
-        embed_section = (
-            f'<iframe style="border-radius:12px" '
-            f'src="{playlist["embed_url"]}" '
-            f'width="100%" height="500" frameBorder="0" '
-            f'allow="autoplay; clipboard-write; encrypted-media; picture-in-picture" '
-            f'loading="lazy"></iframe>'
-        )
-    else:
-        # Fallback: list songs as links
-        items = "\n".join(
-            f'<li><a href="{s["track_url"]}" target="_blank">{s["name"]} — {s["artist"]}</a></li>'
-            for s in songs
-        )
-        embed_section = f"<h2>{mood} Songs</h2><ul>{items}</ul>"
-
-    bg_path = str(BG_IMAGE_PATH).replace("\\", "/")
-
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Emotify — {mood} Playlist</title>
-  <style>
-    body {{
-      margin: 0; padding: 40px;
-      font-family: Arial, sans-serif;
-      color: #eef6ff;
-      background: #070b12 url('file:///{bg_path}') center/cover no-repeat fixed;
-    }}
-    .container {{ max-width: 900px; margin: auto; }}
-    h1 {{ font-size: 32px; }}
-    ul {{ list-style: none; padding: 0; }}
-    li {{ padding: 6px 0; }}
-    a {{ color: #7dd3fc; }}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Emotify — {mood} Playlist</h1>
-    {embed_section}
-  </div>
-</body>
-</html>"""
-
-    NEW_HTML_PATH.write_text(html, encoding="utf-8")
-    # Open the HTML file in the default browser on Windows
-    os.startfile(str(NEW_HTML_PATH))
-    return str(NEW_HTML_PATH)

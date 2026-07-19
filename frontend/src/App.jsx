@@ -5,49 +5,41 @@ import Bgm from "./components/bgm.mp4";
 
 function Garlic() {
   return (
-    <div>
-      <nav
-        className="navbar navbar-expand-lg navbar-light bg-dark"
-        style={{ paddingLeft: "20px" }}
-      >
-        <h1 className="navbar-brand logo">Emotify</h1>
-        <div className="collapse navbar-collapse" id="navbarNav">
-          <ul className="navbar-nav">
-            <li className="nav-item active">
-              <a className="nav-link" id="home" href="/home">
-                Home
-              </a>
-            </li>
-            <li className="nav-item">
-              <a className="nav-link" id="abt-us" href="/about">
-                About-Us
-              </a>
-            </li>
-          </ul>
+    <div className="app-container">
+      <nav className="custom-navbar">
+        <a href="/home" className="logo">Emotify</a>
+        <div className="nav-links">
+          <a href="/home" className="nav-link-item active">Home</a>
+          <a href="/about" className="nav-link-item about-btn">About-Us</a>
         </div>
       </nav>
-      <video loop autoPlay muted id="myvideo">
-        <source src={Bgm}></source>
-      </video>
-      <div>
-        <h1 id="abt">Introducing Emotify</h1>
-        <p id="abt2">
-          We trained a model called Emotify that reads facial expressions and
-          recommends songs to match the mood.
-        </p>
-      </div>
-      <a
-        href="http://127.0.0.1:5000/"
-        id="abt3"
-        target="_blank"
-        rel="noreferrer"
-      >
-        Try Emotify
-      </a>
+
+      <main className="main-content">
+        <div className="video-container">
+          <video loop autoPlay muted id="myvideo">
+            <source src={Bgm}></source>
+          </video>
+        </div>
+
+        <div className="text-container">
+          <h1 className="hero-title">Introducing Emotify</h1>
+          <p className="hero-desc">
+            We trained a model called Emotify that reads facial expressions and
+            recommends songs to match the mood.
+          </p>
+          <a
+            href="http://127.0.0.1:5000/"
+            className="cta-button"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Try Emotify
+          </a>
+        </div>
+      </main>
     </div>
   );
 }
 
 export default Garlic;
 
-//C:\Users\urvas\OneDrive\Desktop\Arithemania-2.0\Emotify_ANKH-master\public\app.py
