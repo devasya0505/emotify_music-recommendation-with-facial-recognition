@@ -10,7 +10,7 @@ function Garlic() {
         <a href="/home" className="logo">Emotify</a>
         <div className="nav-links">
           <a href="/home" className="nav-link-item active">Home</a>
-          <a href="/about" className="nav-link-item about-btn">About-Us</a>
+          {/* <a href="/about" className="nav-link-item about-btn">About-Us</a> */}
         </div>
       </nav>
 
