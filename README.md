@@ -114,7 +114,7 @@ npm start
 1. Open `http://localhost:3000` in your web browser.
 2. Click **Try Emotify** to open the emotion detection page.
 3. Click **Start Emotion Detection**. The webcam window will pop up.
-4. Keep your face centered in front of the camera (wait for ~50 frames or press `q` to stop detection early).
+4. Keep your face centered in front of the camera (wait for the 5-second countdown or press `q` to stop detection early).
 5. The page will display the detected emotion, and list recommended Bollywood and Hollywood songs with Spotify embed players.
 
 ---

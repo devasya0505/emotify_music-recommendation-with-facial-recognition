@@ -50,8 +50,8 @@ This starts React on **http://localhost:3000**
 
 1. Open **http://localhost:3000** in your browser
 2. Click **"Try Emotify"** — this triggers the Flask backend
-3. Your **webcam opens** and detects your emotion for ~50 frames
-4. Press **Q** to stop early, or wait for it to finish
+3. Your **webcam opens** and detects your emotion for 5 seconds (with live on-screen countdown)
+4. Press **Q** to stop early, or wait for the 5-second countdown to finish
 5. The detected mood maps to a Spotify playlist which opens in your browser
 
 ---

@@ -79,7 +79,7 @@ A browser should auto-open to **http://localhost:3000**
 4. Click **"Start Emotion Detection"**
 5. Your **webcam will open** in a separate window
 6. **Look at the camera** — it detects your face and labels your emotion
-7. After ~50 frames (or press **Q** to stop early), the webcam closes
+7. After 5 seconds (or press **Q** to stop early), the webcam closes
 8. The page shows your **detected emotion** and a **Spotify playlist**
 
 ---

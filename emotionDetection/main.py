@@ -75,8 +75,9 @@ HOME_PAGE = """
   <body>
     <main>
       <h1>Emotify</h1>
-      <p>Click start, allow the webcam window to open, keep your face visible, and wait about 50 frames. You can press <code>q</code> in the camera window to stop early.</p>
+      <p>Click start, allow the webcam window to open, keep your face visible, and wait for 5 seconds. You can press <code>q</code> in the camera window to stop early.</p>
       <form method="post" action="/detect">
+        <input type="hidden" name="seconds" value="5">
         <button type="submit">Start Emotion Detection</button>
       </form>
     </main>
@@ -371,8 +372,8 @@ def health():
 @app.route("/detect", methods=["GET", "POST"])
 def detect():
     try:
-        duration = int(request.args.get("seconds", 5))
-        camera_index = int(request.args.get("camera", 0))
+        duration = int(request.values.get("seconds", 5))
+        camera_index = int(request.values.get("camera", 0))
         emotion, counts = detect_emotion(duration_seconds=duration, camera_index=camera_index)
         mood = normalize_mood(emotion)
         recommendation = build_recommendation(mood=mood, limit=10, create_playlist=False)
