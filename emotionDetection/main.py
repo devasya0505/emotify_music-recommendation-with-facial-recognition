@@ -263,25 +263,28 @@ ERROR_PAGE = """
 """
 
 
-def _load_dependencies():
+_CV2 = None
+_NP = None
+_PREDICT_FN = None
+_FACE_CLASSIFIER = None
+
+
+def _get_resources():
+    """Load and cache OpenCV cascade and TensorFlow emotion model once."""
+    global _CV2, _NP, _PREDICT_FN, _FACE_CLASSIFIER
+    if _PREDICT_FN is not None and _FACE_CLASSIFIER is not None:
+        return _CV2, _NP, _PREDICT_FN, _FACE_CLASSIFIER
+
     try:
         import cv2
         import numpy as np
-        from tensorflow.keras.models import load_model
+        import tensorflow as tf
     except ImportError as exc:
         missing = exc.name or str(exc)
         raise RuntimeError(
-            f"Missing Python package: {missing}. Install the backend packages with "
-            f"`python -m pip install -r requirements.txt`."
+            f"Missing Python package: {missing}. Install backend packages with "
+            "`python -m pip install -r requirements.txt`."
         ) from exc
-
-    return cv2, np, load_model
-
-
-def detect_emotion(duration_seconds=5, camera_index=0):
-    """Run webcam emotion detection for *duration_seconds* (default 5s)."""
-    import time as _time
-    cv2, np, load_model = _load_dependencies()
 
     if not CASCADE_PATH.exists():
         raise RuntimeError(f"Face cascade file was not found: {CASCADE_PATH}")
@@ -292,7 +295,29 @@ def detect_emotion(duration_seconds=5, camera_index=0):
     if face_classifier.empty():
         raise RuntimeError(f"OpenCV could not load the cascade file: {CASCADE_PATH}")
 
-    classifier = load_model(str(MODEL_PATH), compile=False)
+    model = tf.keras.models.load_model(str(MODEL_PATH), compile=False)
+
+    # Compile the model forward pass for high-speed, direct tensor execution (~10x faster than .predict)
+    @tf.function(reduce_retracing=True)
+    def predict_fn(x):
+        return model(x, training=False)
+
+    # Warm up graph execution once so there is zero delay during capture
+    dummy_input = tf.constant(np.zeros((1, 48, 48, 1), dtype=np.float32))
+    _ = predict_fn(dummy_input)
+
+    _CV2 = cv2
+    _NP = np
+    _PREDICT_FN = predict_fn
+    _FACE_CLASSIFIER = face_classifier
+    return _CV2, _NP, _PREDICT_FN, _FACE_CLASSIFIER
+
+
+def detect_emotion(duration_seconds=5, camera_index=0):
+    """Run real-time webcam emotion detection for *duration_seconds* with optimized frame-rate."""
+    import time as _time
+
+    cv2, np, predict_fn, face_classifier = _get_resources()
 
     camera_backend = cv2.CAP_DSHOW if os.name == "nt" else 0
     cap = cv2.VideoCapture(camera_index, camera_backend)
@@ -302,13 +327,21 @@ def detect_emotion(duration_seconds=5, camera_index=0):
             "or try another camera index with /detect?camera=1."
         )
 
+    # Configure optimal camera properties for smooth streaming
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
     counts = {}
     start_time = _time.time()
     window_name = "Emotion Detector - press q to stop"
 
-    # Create the window and force it to pop up on top
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
+
+    cached_detections = []
+    frame_count = 0
 
     try:
         while (_time.time() - start_time) < duration_seconds:
@@ -316,37 +349,75 @@ def detect_emotion(duration_seconds=5, camera_index=0):
             if not ok or frame is None:
                 continue
 
-            # Mirror the frame horizontally
+            frame_count += 1
+
+            # Mirror the frame horizontally for natural user experience
             frame = cv2.flip(frame, 1)
 
-            # Show countdown timer on screen
             elapsed = _time.time() - start_time
-            remaining = max(0, duration_seconds - elapsed)
+            remaining = max(0.0, duration_seconds - elapsed)
 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = face_classifier.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+            # Perform detection & inference every 2nd frame for maximum smoothness
+            if frame_count % 2 == 1:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            for (x, y, w, h) in faces:
+                # Downscale by 0.5x for ultra-fast face detection (~5x faster Haar Cascade execution)
+                small_gray = cv2.resize(gray, (0, 0), fx=0.5, fy=0.5)
+                faces = face_classifier.detectMultiScale(
+                    small_gray,
+                    scaleFactor=1.15,
+                    minNeighbors=4,
+                    minSize=(20, 20),
+                )
+
+                new_detections = []
+                for (sx, sy, sw, sh) in faces:
+                    x, y, w, h = sx * 2, sy * 2, sw * 2, sh * 2
+
+                    # Crop and resize from the original grayscale frame
+                    roi_gray = gray[y : y + h, x : x + w]
+                    if roi_gray.size == 0 or np.sum(roi_gray) == 0:
+                        continue
+
+                    roi_gray = cv2.resize(roi_gray, (48, 48), interpolation=cv2.INTER_AREA)
+                    roi = (roi_gray.astype("float32") / 255.0).reshape(1, 48, 48, 1)
+
+                    # High-speed forward pass
+                    prediction = predict_fn(roi).numpy()[0]
+                    label = EMOTION_LABELS[int(prediction.argmax())]
+                    counts[label] = counts.get(label, 0) + 1
+                    new_detections.append((x, y, w, h, label))
+
+                cached_detections = new_detections
+
+            # Draw bounding boxes and emotion labels
+            for (x, y, w, h, label) in cached_detections:
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 255), 2)
-                roi_gray = gray[y : y + h, x : x + w]
-                roi_gray = cv2.resize(roi_gray, (48, 48), interpolation=cv2.INTER_AREA)
+                cv2.putText(
+                    frame,
+                    label,
+                    (x, max(25, y - 10)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.9,
+                    (0, 255, 0),
+                    2,
+                )
 
-                if np.sum(roi_gray) == 0:
-                    continue
+            # Render smooth live countdown
+            cv2.putText(
+                frame,
+                f"Time left: {remaining:.1f}s",
+                (14, 32),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (255, 255, 255),
+                2,
+            )
 
-                roi = roi_gray.astype("float32") / 255.0
-                roi = np.expand_dims(roi, axis=(0, -1))
-                prediction = classifier.predict(roi, verbose=0)[0]
-                label = EMOTION_LABELS[int(prediction.argmax())]
-                counts[label] = counts.get(label, 0) + 1
-                cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-            # Show timer on frame
-            cv2.putText(frame, f"Time left: {remaining:.1f}s", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
             cv2.imshow(window_name, frame)
 
-            if (cv2.waitKey(33) & 0xFF) == ord("q"):
+            # Minimal 1ms wait key ensures immediate frame dispatch and GUI flush
+            if (cv2.waitKey(1) & 0xFF) == ord("q"):
                 break
     finally:
         cap.release()
