@@ -313,25 +313,68 @@ def _get_resources():
     return _CV2, _NP, _PREDICT_FN, _FACE_CLASSIFIER
 
 
+class ThreadedCamera:
+    """High-speed threaded camera reader to eliminate USB capture wait times."""
+    def __init__(self, src=0, backend=0):
+        import cv2
+        self.cap = cv2.VideoCapture(src, backend)
+        try:
+            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        except Exception:
+            pass
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap.set(cv2.CAP_PROP_FPS, 30)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        self.grabbed, self.frame = self.cap.read()
+        self.stopped = False
+        import threading
+        self.lock = threading.Lock()
+        self.thread = threading.Thread(target=self._capture_loop, daemon=True)
+        self.thread.start()
+
+    def _capture_loop(self):
+        import time as _t
+        while not self.stopped:
+            grabbed, frame = self.cap.read()
+            if grabbed and frame is not None:
+                with self.lock:
+                    self.grabbed = grabbed
+                    self.frame = frame
+            else:
+                _t.sleep(0.005)
+
+    def read(self):
+        with self.lock:
+            if not self.grabbed or self.frame is None:
+                return False, None
+            return True, self.frame.copy()
+
+    def isOpened(self):
+        return self.cap.isOpened()
+
+    def release(self):
+        self.stopped = True
+        if self.thread.is_alive():
+            self.thread.join(timeout=0.6)
+        self.cap.release()
+
+
 def detect_emotion(duration_seconds=5, camera_index=0):
-    """Run real-time webcam emotion detection for *duration_seconds* with optimized frame-rate."""
+    """Run real-time webcam emotion detection with threaded capture, async inference and smoothed tracking."""
     import time as _time
+    import threading
 
     cv2, np, predict_fn, face_classifier = _get_resources()
 
     camera_backend = cv2.CAP_DSHOW if os.name == "nt" else 0
-    cap = cv2.VideoCapture(camera_index, camera_backend)
-    if not cap.isOpened():
+    cam = ThreadedCamera(camera_index, camera_backend)
+    if not cam.isOpened():
         raise RuntimeError(
             "Could not open the webcam. Check camera permissions, close other apps using the camera, "
             "or try another camera index with /detect?camera=1."
         )
-
-    # Configure optimal camera properties for smooth streaming
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_FPS, 30)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     counts = {}
     start_time = _time.time()
@@ -340,16 +383,60 @@ def detect_emotion(duration_seconds=5, camera_index=0):
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
 
-    cached_detections = []
-    frame_count = 0
+    # State for asynchronous inference & box smoothing
+    active_detection = None  # (smoothed_box, label)
+    smoothed_box = None
+    is_inferring = False
+    state_lock = threading.Lock()
+
+    def async_inference_worker(frame_input):
+        nonlocal is_inferring, active_detection, smoothed_box
+        try:
+            gray = cv2.cvtColor(frame_input, cv2.COLOR_BGR2GRAY)
+            small_gray = cv2.resize(gray, (0, 0), fx=0.5, fy=0.5)
+            faces = face_classifier.detectMultiScale(
+                small_gray,
+                scaleFactor=1.15,
+                minNeighbors=4,
+                minSize=(20, 20),
+            )
+
+            if len(faces) > 0:
+                # Track the most prominent face
+                sx, sy, sw, sh = max(faces, key=lambda f: f[2] * f[3])
+                x, y, w, h = sx * 2, sy * 2, sw * 2, sh * 2
+
+                roi_gray = gray[y : y + h, x : x + w]
+                if roi_gray.size > 0 and np.sum(roi_gray) > 0:
+                    roi_gray = cv2.resize(roi_gray, (48, 48), interpolation=cv2.INTER_AREA)
+                    roi = (roi_gray.astype("float32") / 255.0).reshape(1, 48, 48, 1)
+
+                    prediction = predict_fn(roi).numpy()[0]
+                    label = EMOTION_LABELS[int(prediction.argmax())]
+
+                    with state_lock:
+                        counts[label] = counts.get(label, 0) + 1
+                        # Exponential smoothing for jitter-free bounding box gliding
+                        if smoothed_box is None:
+                            smoothed_box = [x, y, w, h]
+                        else:
+                            smoothed_box = [
+                                int(smoothed_box[0] * 0.55 + x * 0.45),
+                                int(smoothed_box[1] * 0.55 + y * 0.45),
+                                int(smoothed_box[2] * 0.55 + w * 0.45),
+                                int(smoothed_box[3] * 0.55 + h * 0.45),
+                            ]
+                        active_detection = (smoothed_box, label)
+        finally:
+            with state_lock:
+                is_inferring = False
 
     try:
         while (_time.time() - start_time) < duration_seconds:
-            ok, frame = cap.read()
+            ok, frame = cam.read()
             if not ok or frame is None:
+                _time.sleep(0.005)
                 continue
-
-            frame_count += 1
 
             # Mirror the frame horizontally for natural user experience
             frame = cv2.flip(frame, 1)
@@ -357,48 +444,32 @@ def detect_emotion(duration_seconds=5, camera_index=0):
             elapsed = _time.time() - start_time
             remaining = max(0.0, duration_seconds - elapsed)
 
-            # Perform detection & inference every 2nd frame for maximum smoothness
-            if frame_count % 2 == 1:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # Trigger non-blocking inference in parallel whenever ready
+            with state_lock:
+                busy = is_inferring
 
-                # Downscale by 0.5x for ultra-fast face detection (~5x faster Haar Cascade execution)
-                small_gray = cv2.resize(gray, (0, 0), fx=0.5, fy=0.5)
-                faces = face_classifier.detectMultiScale(
-                    small_gray,
-                    scaleFactor=1.15,
-                    minNeighbors=4,
-                    minSize=(20, 20),
-                )
+            if not busy:
+                with state_lock:
+                    is_inferring = True
+                threading.Thread(
+                    target=async_inference_worker,
+                    args=(frame.copy(),),
+                    daemon=True,
+                ).start()
 
-                new_detections = []
-                for (sx, sy, sw, sh) in faces:
-                    x, y, w, h = sx * 2, sy * 2, sw * 2, sh * 2
+            # Render smoothed detection overlay
+            with state_lock:
+                current_det = active_detection
 
-                    # Crop and resize from the original grayscale frame
-                    roi_gray = gray[y : y + h, x : x + w]
-                    if roi_gray.size == 0 or np.sum(roi_gray) == 0:
-                        continue
-
-                    roi_gray = cv2.resize(roi_gray, (48, 48), interpolation=cv2.INTER_AREA)
-                    roi = (roi_gray.astype("float32") / 255.0).reshape(1, 48, 48, 1)
-
-                    # High-speed forward pass
-                    prediction = predict_fn(roi).numpy()[0]
-                    label = EMOTION_LABELS[int(prediction.argmax())]
-                    counts[label] = counts.get(label, 0) + 1
-                    new_detections.append((x, y, w, h, label))
-
-                cached_detections = new_detections
-
-            # Draw bounding boxes and emotion labels
-            for (x, y, w, h, label) in cached_detections:
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 255), 2)
+            if current_det is not None:
+                (bx, by, bw, bh), blabel = current_det
+                cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), (0, 255, 255), 2)
                 cv2.putText(
                     frame,
-                    label,
-                    (x, max(25, y - 10)),
+                    blabel,
+                    (bx, max(28, by - 10)),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.9,
+                    0.95,
                     (0, 255, 0),
                     2,
                 )
@@ -407,20 +478,20 @@ def detect_emotion(duration_seconds=5, camera_index=0):
             cv2.putText(
                 frame,
                 f"Time left: {remaining:.1f}s",
-                (14, 32),
+                (14, 34),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
+                0.85,
                 (255, 255, 255),
                 2,
             )
 
             cv2.imshow(window_name, frame)
 
-            # Minimal 1ms wait key ensures immediate frame dispatch and GUI flush
+            # 1ms GUI event check ensures zero render lag
             if (cv2.waitKey(1) & 0xFF) == ord("q"):
                 break
     finally:
-        cap.release()
+        cam.release()
         cv2.destroyAllWindows()
 
     if not counts:
